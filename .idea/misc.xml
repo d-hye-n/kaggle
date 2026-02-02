@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="GithubDefaultAccount">
-    <option name="defaultAccountId" value="ca639173-ad4a-4b2e-b1be-d252b31d58c6" />
+  <component name="Black">
+    <option name="sdkName" value="dl5" />
   </component>
   <component name="KubernetesApiPersistence">{}</component>
   <component name="KubernetesApiProvider"><![CDATA[{
   "isMigrated": true
 }]]></component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.11" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="dl5" project-jdk-type="Python SDK" />
 </project>
