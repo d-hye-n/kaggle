@@ -9,10 +9,6 @@ test_file_path = os.path.join('..', 'data', 'playground-series-s6e2', 'test.csv'
 train = pd.read_csv(train_file_path)
 test = pd.read_csv(test_file_path)
 
-print(train.shape)
-print(train.head())
-
-print(train['Heart Disease'].value_counts(normalize=True))
 
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
@@ -34,7 +30,7 @@ X_test = test.drop(columns=['id'])
 
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-model = XGBClassifier(
+xgb_model = XGBClassifier(
     n_estimators=1000,
     learning_rate=0.05,
     max_depth=6,
@@ -44,16 +40,37 @@ model = XGBClassifier(
     early_stopping_rounds=50
 )
 
-print('Training the model...')
-model.fit(X_train, y_train,
+print('Training the XGBoost model...')
+xgb_model.fit(X_train, y_train,
           eval_set=[(X_val, y_val)],
           verbose=100)
 
-preds = model.predict_proba(X_test)[:, 1]
+xgb_preds = xgb_model.predict_proba(X_test)[:, 1]
+
+from lightgbm import LGBMClassifier
+
+lgbm_model = LGBMClassifier(
+    n_estimators=1000,
+    learning_rate=0.05,
+    max_depth=6,
+    early_stopping_rounds=50,
+    random_state=42,
+    verbose=100
+)
+
+print('Training the LightGBM model...')
+lgbm_model.fit(X_train, y_train,
+               eval_set=[(X_val, y_val)],
+               )
+
+lgbm_preds = lgbm_model.predict_proba(X_test)[:, 1]
+final_preds = xgb_preds*0.5 + lgbm_preds*0.5
+
+
 submission = pd.DataFrame({
     'id': test['id'],
-    'Heart Disease': preds
+    'Heart Disease': final_preds
 })
-submission_file_path = os.path.join(base_path, 'submission.csv')
+submission_file_path = os.path.join(base_path, 'submission2.csv')
 submission.to_csv(submission_file_path, index=False)
 print(f'Submission file saved to {submission_file_path}')
