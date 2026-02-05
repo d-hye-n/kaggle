@@ -15,6 +15,10 @@ from lightgbm import LGBMClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import roc_auc_score
+from optuna.integration import XGBoostPruningCallback
+from optuna.integration import LightGBMPruningCallback
+
+db_url = "sqlite:///heart_disease_optuna.db"
 
 train['id'] = train['Heart Disease'].map({'Presence': 1, 'Absence': 0})
 
@@ -45,18 +49,16 @@ def objective_xgb(trial):
         'random_state': 42,
         'early_stopping_rounds': 50,
         'eval_metric': 'auc',
-        'n_jobs': -1
+        'n_jobs': -1,
     }
 
-    model = XGBClassifier(**params)
-    model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
+    pruning_callback = XGBoostPruningCallback(trial, "validation_0-auc")
+
+    model = XGBClassifier(**params, callbacks=[pruning_callback])
+    model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
     preds = model.predict_proba(X_val)[:, 1]
     auc = roc_auc_score(y_val, preds)
     return auc
-
-study_xgb = optuna.create_study(direction='maximize')
-study_xgb.optimize(objective_xgb, n_trials=100)
-print('Best XGBoost parameters:', study_xgb.best_params)
 
 def objective_lgbm(trial):
     params = {
@@ -73,15 +75,31 @@ def objective_lgbm(trial):
         'n_jobs': -1
     }
 
-    model = LGBMClassifier(**params)
+    pruning_callback = LightGBMPruningCallback(trial, "auc")
+
+    model = LGBMClassifier(**params, callbacks=[pruning_callback])
     model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
     preds = model.predict_proba(X_val)[:, 1]
     auc = roc_auc_score(y_val, preds)
     return auc
 
-study_lgbm = optuna.create_study(direction='maximize')
-study_lgbm.optimize(objective_lgbm, n_trials=100, n_jobs=-1)
+if __name__ == "__main__":
+    storage_url = "sqlite:///D:/Dev/python/kaggle/Predicting_Heart_Disease/heart_disease_optuna.db"
+
+    study_xgb = optuna.create_study(study_name="xgb_v1", storage=storage_url, direction="maximize", load_if_exists=True)
+    study_xgb.optimize(objective_xgb, n_trials=100)
+
+    study_lgbm = optuna.create_study(study_name="lgbm_v1", storage=storage_url, direction="maximize", load_if_exists=True)
+    study_lgbm.optimize(objective_lgbm, n_trials=100, n_jobs=1)
+
+study_xgb = optuna.load_study(study_name="xgb_v1", storage=db_url)
+study_lgbm = optuna.load_study(study_name="lgbm_v1", storage=db_url)
+
+print('Best XGBoost parameters:', study_xgb.best_params)
+best_xgb_params = study_xgb.best_params
+
 print('Best LightGBM parameters:', study_lgbm.best_params)
+best_lgbm_params = study_lgbm.best_params
 
 '''
 xgb_model = XGBClassifier(
@@ -120,7 +138,6 @@ lgbm_preds = lgbm_model.predict_proba(X_test)[:, 1]
 final_preds = xgb_preds*0.5 + lgbm_preds*0.5
 '''
 
-
 final_xgb = XGBClassifier(**best_xgb_params, device='cuda', tree_method='hist')
 final_lgbm = LGBMClassifier(**best_lgbm_params, device='gpu')
 
@@ -140,6 +157,6 @@ submission = pd.DataFrame({
     'id': test['id'],
     'Heart Disease': final_preds
 })
-submission_file_path = os.path.join(base_path, 'submission3.csv')
+submission_file_path = os.path.join(base_path, 'submission5.csv')
 submission.to_csv(submission_file_path, index=False)
 print(f'Submission file saved to {submission_file_path}')

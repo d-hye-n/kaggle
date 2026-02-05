@@ -4,8 +4,5 @@
     <option name="sdkName" value="dl5" />
   </component>
   <component name="KubernetesApiPersistence">{}</component>
-  <component name="KubernetesApiProvider"><![CDATA[{
-  "isMigrated": true
-}]]></component>
   <component name="ProjectRootManager" version="2" project-jdk-name="dl5" project-jdk-type="Python SDK" />
 </project>
