@@ -15,8 +15,10 @@ from lightgbm import LGBMClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import StratifiedKFold
 from optuna.integration import XGBoostPruningCallback
 from optuna.integration import LightGBMPruningCallback
+import numpy as np
 
 db_url = "sqlite:///heart_disease_optuna.db"
 
@@ -44,7 +46,6 @@ def objective_xgb(trial):
         'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
         'subsample': trial.suggest_float('subsample', 0.5, 1.0),
         'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
-        'device': 'cuda',
         'tree_method': 'hist',
         'random_state': 42,
         'early_stopping_rounds': 50,
@@ -52,13 +53,23 @@ def objective_xgb(trial):
         'n_jobs': -1,
     }
 
-    pruning_callback = XGBoostPruningCallback(trial, "validation_0-auc")
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    cv_scores = []
 
-    model = XGBClassifier(**params, callbacks=[pruning_callback])
-    model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
-    preds = model.predict_proba(X_val)[:, 1]
-    auc = roc_auc_score(y_val, preds)
-    return auc
+    for train_idx, val_idx in skf.split(X, y):
+        X_train_fold, X_val_fold = X.iloc[train_idx], X.iloc[val_idx]
+        y_train_fold, y_val_fold = y.iloc[train_idx], y.iloc[val_idx]
+
+        pruning_callback = [XGBoostPruningCallback(trial, "validation_0-auc")] if i == 0 else []
+
+        model = XGBClassifier(**params, callbacks=[pruning_callback])
+        model.fit(X_train_fold, y_train_fold, eval_set=[(X_val_fold, y_val_fold)], verbose=False)
+
+        preds = model.predict_proba(X_val_fold)[:, 1]
+        auc = roc_auc_score(y_val_fold, preds)
+        cv_scores.append(auc)
+
+    return np.mean(cv_scores)
 
 def objective_lgbm(trial):
     params = {
@@ -75,13 +86,32 @@ def objective_lgbm(trial):
         'n_jobs': -1
     }
 
-    pruning_callback = LightGBMPruningCallback(trial, "auc")
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    cv_scores = []
 
-    model = LGBMClassifier(**params, callbacks=[pruning_callback])
-    model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
-    preds = model.predict_proba(X_val)[:, 1]
-    auc = roc_auc_score(y_val, preds)
-    return auc
+    for i, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+        X_train_fold, X_val_fold = X.iloc[train_idx], X.iloc[val_idx]
+        y_train_fold, y_val_fold = y.iloc[train_idx], y.iloc[val_idx]
+
+        callbacks = [
+            LightGBMPruningCallback(trial, "auc"),
+            lgb.early_stopping(stopping_rounds=50),
+            lgb.log_evaluation(period=0)
+        ] if i == 0 else [lgb.early_stopping(stopping_rounds=50), lgb.log_evaluation(period=0)]
+
+        model = lgb.LGBMClassifier(**params)
+        model.fit(
+            X_train_fold, y_train_fold,
+            eval_set=[(X_val_fold, y_val_fold)],
+            eval_metric='auc',
+            callbacks=callbacks
+        )
+
+        preds = model.predict_proba(X_val_fold)[:, 1]
+        auc = roc_auc_score(y_val_fold, preds)
+        cv_scores.append(auc)
+
+    return np.mean(cv_scores)
 
 if __name__ == "__main__":
     storage_url = "sqlite:///D:/Dev/python/kaggle/Predicting_Heart_Disease/heart_disease_optuna.db"
