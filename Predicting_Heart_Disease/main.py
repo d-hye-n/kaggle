@@ -60,9 +60,8 @@ def objective_xgb(trial):
         X_train_fold, X_val_fold = X.iloc[train_idx], X.iloc[val_idx]
         y_train_fold, y_val_fold = y.iloc[train_idx], y.iloc[val_idx]
 
-        pruning_callback = [XGBoostPruningCallback(trial, "validation_0-auc")] if i == 0 else []
 
-        model = XGBClassifier(**params, callbacks=[pruning_callback])
+        model = XGBClassifier(**params, device = 'cuda')
         model.fit(X_train_fold, y_train_fold, eval_set=[(X_val_fold, y_val_fold)], verbose=False)
 
         preds = model.predict_proba(X_val_fold)[:, 1]
@@ -93,18 +92,11 @@ def objective_lgbm(trial):
         X_train_fold, X_val_fold = X.iloc[train_idx], X.iloc[val_idx]
         y_train_fold, y_val_fold = y.iloc[train_idx], y.iloc[val_idx]
 
-        callbacks = [
-            LightGBMPruningCallback(trial, "auc"),
-            lgb.early_stopping(stopping_rounds=50),
-            lgb.log_evaluation(period=0)
-        ] if i == 0 else [lgb.early_stopping(stopping_rounds=50), lgb.log_evaluation(period=0)]
-
-        model = lgb.LGBMClassifier(**params)
+        model = LGBMClassifier(**params)
         model.fit(
             X_train_fold, y_train_fold,
             eval_set=[(X_val_fold, y_val_fold)],
-            eval_metric='auc',
-            callbacks=callbacks
+            eval_metric='auc'
         )
 
         preds = model.predict_proba(X_val_fold)[:, 1]
@@ -187,6 +179,6 @@ submission = pd.DataFrame({
     'id': test['id'],
     'Heart Disease': final_preds
 })
-submission_file_path = os.path.join(base_path, 'submission5.csv')
+submission_file_path = os.path.join(base_path, 'submission6.csv')
 submission.to_csv(submission_file_path, index=False)
 print(f'Submission file saved to {submission_file_path}')
